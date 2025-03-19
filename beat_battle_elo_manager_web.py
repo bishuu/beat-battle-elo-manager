@@ -1,8 +1,6 @@
-
 import streamlit as st
 import pandas as pd
-import pytesseract
-from PIL import Image
+from datetime import datetime
 
 # Initialize sample data
 data = pd.DataFrame({
@@ -12,6 +10,8 @@ data = pd.DataFrame({
     'Battles Missed': [],
     'Placements Remaining': []
 })
+
+battle_history = []  # Stores previous battles
 
 # Rank thresholds
 RANKS = [
@@ -38,27 +38,36 @@ def get_rank(elo):
             return rank_name
     return "Unranked"
 
-def apply_color_score(name, color):
+def apply_color_score(name, color, battle_log):
     idx = data[data['Name'] == name].index[0]
-    data.at[idx, 'ELO'] += COLOR_SCORES[color]
+    prev_elo = data.at[idx, 'ELO']
+    change = COLOR_SCORES[color]
+    data.at[idx, 'ELO'] += change
     data.at[idx, 'Placements Remaining'] = max(0, data.at[idx, 'Placements Remaining'] - 1)
     data.at[idx, 'Rank'] = get_rank(data.at[idx, 'ELO'])
     data.at[idx, 'Battles Missed'] = 0
 
-def apply_rank_decay():
+    battle_log.append({
+        'Name': name,
+        'Color': color,
+        'ELO Change': change,
+        'Previous ELO': prev_elo,
+        'New ELO': data.at[idx, 'ELO']
+    })
+
+def apply_rank_decay(battle_log):
     for idx, row in data.iterrows():
         if row['Battles Missed'] < 2:
             data.at[idx, 'ELO'] -= 25
             data.at[idx, 'Battles Missed'] += 1
             data.at[idx, 'Rank'] = get_rank(data.at[idx, 'ELO'])
-
-def import_from_image(uploaded_file):
-    img = Image.open(uploaded_file)
-    text = pytesseract.image_to_string(img)
-    names = [line.strip() for line in text.split('\n') if line.strip()]
-    for name in names:
-        if name not in data['Name'].values:
-            data.loc[len(data)] = [name, 1000, get_rank(1000), 0, 2]
+            battle_log.append({
+                'Name': row['Name'],
+                'Color': 'Decay',
+                'ELO Change': -25,
+                'Previous ELO': row['ELO'] + 25,
+                'New ELO': row['ELO']
+            })
 
 def import_from_csv(uploaded_file):
     imported_data = pd.read_csv(uploaded_file)
@@ -87,12 +96,14 @@ st.image("https://oaidalleapiprodscus.blob.core.windows.net/private/org-YrPMpWEn
 st.title("SEASON 0 - INIT PRESET (OPEN BETA)")
 
 # Tabs
-tabs = st.tabs(["Leaderboard", "Admin Panel"])
+tabs = st.tabs(["Leaderboard", "Admin Panel", "Previous Battles"])
 
 # Leaderboard (Public)
 with tabs[0]:
     st.header("Leaderboard")
-    leaderboard_data = data.sort_values(by="ELO", ascending=False)[['Name', 'ELO', 'Rank']]
+    leaderboard_data = data.copy()
+    leaderboard_data['Rank'] = leaderboard_data.apply(lambda row: get_rank(row['ELO']), axis=1)
+    leaderboard_data = leaderboard_data.sort_values(by="ELO", ascending=False)[['Name', 'ELO', 'Rank']]
     st.table(leaderboard_data)
 
 # Admin Panel (Private)
@@ -104,15 +115,25 @@ with tabs[1]:
         st.subheader("Upload Battle Results")
         battle_participants = st.multiselect("Select Participants in this Battle", data['Name'])
         st.write("Assign Scores")
+
+        battle_log = []  # Collect data for battle history log
+
         for name in battle_participants:
             color = st.selectbox(f"Score for {name}", options=list(COLOR_SCORES.keys()), key=name)
             if st.button(f"Apply {color} to {name}", key=name+"_btn"):
-                apply_color_score(name, color)
+                apply_color_score(name, color, battle_log)
                 st.success(f"Applied {color} score to {name}")
 
         if st.button("Process Rank Decay"):
-            apply_rank_decay()
+            apply_rank_decay(battle_log)
             st.success("Rank decay applied to non-participants")
+
+        if battle_log:
+            battle_history.append({
+                'Battle': len(battle_history) + 1,
+                'Timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'Results': battle_log
+            })
 
         st.subheader("Import from CSV")
         uploaded_csv = st.file_uploader("Upload CSV", type="csv")
@@ -120,13 +141,18 @@ with tabs[1]:
             import_from_csv(uploaded_csv)
             st.success("CSV data imported")
 
-        st.subheader("Import Names from Image")
-        uploaded_image = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
-        if uploaded_image:
-            import_from_image(uploaded_image)
-            st.success("Names imported from image")
-
         if st.button("Download Updated ELO Data"):
             st.download_button("Download CSV", data=data.to_csv(index=False), file_name="elo_data.csv", mime="text/csv")
     else:
         st.warning("Enter a valid admin password to access this panel.")
+
+# Previous Battles Tab
+with tabs[2]:
+    st.header("Previous Battles")
+    if not battle_history:
+        st.info("No battles have been recorded yet.")
+    else:
+        for battle in battle_history:
+            with st.expander(f"Battle {battle['Battle']} - {battle['Timestamp']}"):
+                battle_df = pd.DataFrame(battle['Results'])
+                st.table(battle_df)
