@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -77,21 +78,21 @@ def import_from_csv(uploaded_file):
 # UI Setup
 st.set_page_config(page_title="Beat Battle ELO Manager", layout="wide", page_icon="🎚️")
 st.markdown("""
-    <style>
-    .main {
-        background-color: #121212;
-        color: white;
-    }
-    .stButton>button {
-        background-color: #333;
-        color: white;
-        border-radius: 10px;
-        padding: 10px;
-    }
-    </style>
+<style>
+.main {
+    background-color: #121212;
+    color: white;
+}
+.stButton>button {
+    background-color: #333;
+    color: white;
+    border-radius: 10px;
+    padding: 10px;
+}
+</style>
 """, unsafe_allow_html=True)
 
-st.image("https://oaidalleapiprodscus.blob.core.windows.net/private/org-YrPMpWEnTsoqU2T1CdM4dKcs/user-0s3kR3jEEknAYlYBum9EScRb/img-NGjAeq769ELq8zUYdVJ6qSm8.png", use_column_width=True)
+st.image("Bishu_Final_Black.png", use_column_width=True)
 
 st.title("SEASON 0 - INIT PRESET (OPEN BETA)")
 
@@ -110,13 +111,12 @@ with tabs[0]:
 with tabs[1]:
     st.header("Admin Panel (Private)")
     password = st.text_input("Enter Admin Password", type="password")
-    if password == "admin123":  # Change this to a secure password
-
+    if password == "admin123":
         st.subheader("Upload Battle Results")
         battle_participants = st.multiselect("Select Participants in this Battle", data['Name'])
         st.write("Assign Scores")
 
-        battle_log = []  # Collect data for battle history log
+        battle_log = []
 
         for name in battle_participants:
             color = st.selectbox(f"Score for {name}", options=list(COLOR_SCORES.keys()), key=name)
@@ -128,18 +128,18 @@ with tabs[1]:
             apply_rank_decay(battle_log)
             st.success("Rank decay applied to non-participants")
 
+        st.subheader("Import from CSV")
+        uploaded_csv = st.file_uploader("Upload CSV", type="csv")
+        if uploaded_csv:
+            import_from_csv(uploaded_csv)
+            st.success("CSV data imported")
+
         if battle_log:
             battle_history.append({
                 'Battle': len(battle_history) + 1,
                 'Timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 'Results': battle_log
             })
-
-        st.subheader("Import from CSV")
-        uploaded_csv = st.file_uploader("Upload CSV", type="csv")
-        if uploaded_csv:
-            import_from_csv(uploaded_csv)
-            st.success("CSV data imported")
 
         if st.button("Download Updated ELO Data"):
             st.download_button("Download CSV", data=data.to_csv(index=False), file_name="elo_data.csv", mime="text/csv")
